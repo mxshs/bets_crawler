@@ -93,27 +93,65 @@ func (db *DB) InsertBet(game_id int, bet *domain.Bet) (int, error) {
 func (db *DB) InsertGame(game *domain.GameBets) (int, error) {
     var game_id int
 
-    q, err := db.db.Query(
-        `INSERT INTO games (date, tournament, radiant, dire) 
-        VALUES ($1, $2, $3, $4) RETURNING game_id;`,
-        game.Date,
-        game.Tournament,
-        game.TeamA,
-        game.TeamB,
-    )
+    game_id, err := db.checkIfGamePresent(game)
     if err != nil {
         return game_id, err
     }
 
-    q.Next()
+    if game_id == -1 {
+
+        q, err := db.db.Query(
+            `INSERT INTO games (date, tournament, radiant, dire) 
+            VALUES ($1, $2, $3, $4) RETURNING game_id;`,
+            game.Date,
+            game.Tournament,
+            game.TeamA,
+            game.TeamB,
+        )
+        if err != nil {
+            return game_id, err
+        }
+
+        q.Next()
+
+        err = q.Scan(&game_id)
+        if err != nil {
+            return game_id, err
+        }
+
+        err = q.Close()
+    }
+
+    return game_id, err 
+}
+
+func (db *DB) checkIfGamePresent(game *domain.GameBets) (int, error) {
+    var game_id int
+
+    q, err := db.db.Query(
+        `SELECT game_id FROM games WHERE date=$1 and radiant=$2;`,
+        game.Date,
+        game.TeamA,
+    )
+    if err != nil {
+        return -1, err
+    }
+
+    present := q.Next()
+    if !present {
+        return -1, nil
+    }
 
     err = q.Scan(&game_id)
     if err != nil {
-        return game_id, err
+        return -1, err
     }
 
-    err = q.Close()
+    fmt.Printf(
+        "[INFO] Match data is already parsed - game_id=%d (still proceeding with bets for the match)\n",
+        game_id,
+    )
 
-    return game_id, err 
+    return game_id, nil
 }
 
